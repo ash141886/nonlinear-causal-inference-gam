@@ -30,13 +30,13 @@ nonlinear-causal-inference-gam/
 │   ├── additive_hsic.R         # Main method (Algorithm 1)
 │   └── lingam_baseline.R       # LiNGAM comparison
 ├── scripts/                    # Reproducible analysis scripts
-│   ├── 01_simulation_nonlinear.R   # Section 4.1: non-linear benchmarks
-│   ├── 02_simulation_linear.R      # Section 4.2: linear data diagnostics
+│   ├── 01_simulation_nonlinear.R   # Section 4.1: non-linear benchmarks (Figs 1-6)
+│   ├── 02_simulation_linear.R      # Section 4.2: linear-data diagnostics (Fig 7)
 │   ├── 03_wine_red.R               # Section 5: red wine analysis
 │   ├── 03b_wine_red_twostage.R     # Two-stage variant for red wine
 │   ├── 03c_wine_lingam_verify.R    # LiNGAM verification on wine
 │   ├── 04_wine_white.R             # White wine analysis
-│   ├── 05_plot_simulations.R       # Figures 1-7
+│   ├── 05_plot_simulations.R       # Renders Figures 1-6 from 01_* output
 │   └── 06_plot_wine.R              # Figures 8-9
 ├── data/                       # Data files (auto-downloaded)
 ├── figures/                    # Generated figures
@@ -66,8 +66,11 @@ Rscript scripts/02_simulation_linear.R
 Rscript scripts/03b_wine_red_twostage.R
 Rscript scripts/04_wine_white.R
 
-# 3. Generate all figures
+# 3. Generate figures
+# Figures 1-6 (non-linear simulation summaries):
 Rscript scripts/05_plot_simulations.R
+# Figure 7 is produced directly by scripts/02_simulation_linear.R above.
+# Figures 8-9 (wine):
 Rscript scripts/06_plot_wine.R
 ```
 

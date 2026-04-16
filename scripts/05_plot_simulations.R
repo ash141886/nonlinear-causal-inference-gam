@@ -1,17 +1,19 @@
 # =============================================================================
-# Plotting: Simulation Figures (Figures 1-7) -- Publication-grade
+# Plotting: Non-linear Simulation Figures (Figures 1-6) -- Publication-grade
 # =============================================================================
 #
-# Reads results from scripts/01_simulation_nonlinear.R and
-# scripts/02_simulation_linear.R, generates all simulation figures in the
-# journal-ready style: italic math symbols for n and p (via plotmath),
-# en-dash in "Kolmogorov-Smirnov", explicit x-axis ticks matching the
-# simulation grid, clean captions, and a unified theme with adequate base
-# font size for single-column / 180 mm PDF reproduction.
+# Reads results from scripts/01_simulation_nonlinear.R and generates the
+# non-linear simulation figures in the journal-ready style: italic math symbols
+# for n and p (via plotmath), en-dash in "Kolmogorov-Smirnov", explicit x-axis
+# ticks matching the simulation grid, clean captions, and a unified theme with
+# adequate base font size for single-column / 180 mm PDF reproduction.
 #
-# Usage: Rscript scripts/05_plot_simulations.R
+# Figure 7 (linear-case diagnostics, Linear_R5.pdf) is produced directly by
+# scripts/02_simulation_linear.R and is NOT drawn here.
+#
+# Usage:  Rscript scripts/05_plot_simulations.R
 # Output: figures/f1_r34.pdf, accuracy_r34.pdf, misoriented_r34.pdf,
-#         shd_r34.pdf, mse_r34.pdf, time_r34.pdf, Linear_R34.pdf
+#         shd_r34.pdf, mse_r34.pdf, time_r34.pdf
 # =============================================================================
 
 library(ggplot2)
@@ -24,7 +26,6 @@ dir.create("figures", showWarnings = FALSE)
 # --- Load Results ------------------------------------------------------------
 
 sim_nl <- readRDS("results/sim_nonlinear.rds")
-sim_ln <- readRDS("results/sim_linear.rds")
 
 # --- Publication Theme -------------------------------------------------------
 
@@ -125,59 +126,8 @@ make_dual_plot(sim_nl, "MSE", "Adjacency MSE", "Adjacency MSE", "mse_r34.pdf")
 # Figure 6: Runtime
 make_dual_plot(sim_nl, "Time", "Runtime (seconds)", "Runtime", "time_r34.pdf")
 
-# --- Figure 7: Linear-data residual diagnostics ------------------------------
-
-cat("Generating linear diagnostics figure...\n")
-
-lin_medians <- sim_ln %>%
-  group_by(n, method) %>%
-  summarise(
-    RMSE    = median(RMSE,    na.rm = TRUE),
-    KS_stat = median(KS_stat, na.rm = TRUE),
-    KS_pval = median(KS_pval, na.rm = TRUE),
-    t_pval  = median(t_pval,  na.rm = TRUE),
-    .groups = "drop"
-  )
-
-# Common aesthetic mappings for Figure 7 sub-panels
-fig7_common <- list(
-  geom_line(linewidth = 0.7),
-  geom_point(size = 2.2),
-  scale_color_manual(values = method_colors),
-  scale_linetype_manual(values = method_linetypes),
-  scale_x_continuous(breaks = c(400, 800, 1200, 1600)),
-  theme_paper,
-  theme(legend.position = "right")
-)
-
-p_rmse <- ggplot(lin_medians, aes(x = n, y = RMSE,
-                                  color = method, linetype = method)) +
-  fig7_common +
-  labs(x = xlab_n, y = "Mean RMSE", title = "Mean RMSE")
-
-p_ks <- ggplot(lin_medians, aes(x = n, y = KS_stat,
-                                color = method, linetype = method)) +
-  fig7_common +
-  labs(x = xlab_n, y = "Mean KS statistic",
-       title = "Kolmogorov\u2013Smirnov statistic")
-
-p_ks_p <- ggplot(lin_medians, aes(x = n, y = KS_pval,
-                                  color = method, linetype = method)) +
-  geom_hline(yintercept = 0.05, linetype = "dotted", color = "grey40") +
-  fig7_common +
-  labs(x = xlab_n, y = expression("Mean" ~ italic(p) * "-value (KS)"),
-       title = "Kolmogorov\u2013Smirnov p-value")
-
-p_t <- ggplot(lin_medians, aes(x = n, y = t_pval,
-                               color = method, linetype = method)) +
-  geom_hline(yintercept = 0.05, linetype = "dotted", color = "grey40") +
-  fig7_common +
-  labs(x = xlab_n, y = expression("Mean" ~ italic(p) * "-value (" * italic(t) * "-test)"),
-       title = expression(italic(t) * "-test p-value"))
-
-pdf("figures/Linear_R34.pdf", width = 10, height = 8, useDingbats = FALSE)
-grid.arrange(p_rmse, p_ks, p_ks_p, p_t, nrow = 2, ncol = 2)
-dev.off()
-cat("Saved: Linear_R34.pdf\n")
+# Note: Figure 7 (linear-case residual diagnostics, Linear_R5.pdf) is produced
+# directly by scripts/02_simulation_linear.R, which runs its own simulation
+# and plotting in a single pass. No action is needed here.
 
 cat("\nAll simulation figures generated.\n")
