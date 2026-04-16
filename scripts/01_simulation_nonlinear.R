@@ -1,40 +1,58 @@
 # =============================================================================
-# Simulation Study: Non-linear Settings (Section 4.1)
+# Non-linear simulation study
 # =============================================================================
 #
-# Generates Figures 1-6 and simulation results from the manuscript.
-# Compares additive-HSIC against LiNGAM across:
-#   p in {4, 8, 12, 16}, n in {400, 800, 1200, 1600}
-#   50 Monte Carlo trials per configuration
+# Compares the additive-HSIC discovery procedure against the ICA-based
+# LiNGAM baseline on synthetic non-linear structural equation models.
+# For each combination of dimension p and sample size n, a random DAG is
+# drawn with a target edge density and data are simulated with a mixture
+# of linear and non-linear parent effects and non-Gaussian (Laplace /
+# uniform) noise. Each method is applied to every replicate and scored by
+# directed F1, graph accuracy, structural Hamming distance, adjacency
+# mean-squared error, count of mis-oriented edges, and wall-clock time.
 #
-# Usage: Rscript scripts/01_simulation_nonlinear.R
-# Output: results/sim_nonlinear.rds, figures/f1_r34.pdf, etc.
+# Grid:   p in {4, 8, 12, 16},  n in {400, 800, 1200, 1600}
+# Trials: 50 independent replicates per (p, n) configuration
 #
-# Estimated runtime: ~4-8 hours (parallelizable)
+# Usage:  Rscript scripts/01_simulation_nonlinear.R
+# Output: results/sim_nonlinear.rds
+#         (long-format data frame; rendered into figures by
+#          scripts/05_plot_simulations.R)
+#
+# Typical runtime: 4-8 h single-threaded on a laptop. The outermost loops
+# are embarrassingly parallel and can be trivially split across cores or
+# cluster nodes; an optional SLURM wrapper is provided in cluster/.
 # =============================================================================
 
 source("R/additive_hsic.R")
 source("R/lingam_baseline.R")
 
-# --- Configuration -----------------------------------------------------------
 
-P_VALUES   <- c(4, 8, 12, 16)
-N_VALUES   <- c(400, 800, 1200, 1600)
-N_TRIALS   <- 50
-EDGE_DENSITY <- 0.3
-ALPHA      <- 0.05
-N_PERM     <- 200
-NONLINEAR_FRAC <- 0.5
+# -----------------------------------------------------------------------------
+# Configuration
+# -----------------------------------------------------------------------------
+
+P_VALUES        <- c(4, 8, 12, 16)
+N_VALUES        <- c(400, 800, 1200, 1600)
+N_TRIALS        <- 50
+EDGE_DENSITY    <- 0.3
+ALPHA           <- 0.05
+N_PERM          <- 200
+NONLINEAR_FRAC  <- 0.5
 
 dir.create("results", showWarnings = FALSE)
 dir.create("figures", showWarnings = FALSE)
 
-# --- Main Simulation Loop ----------------------------------------------------
 
-cat("=== Non-linear Simulation Study ===\n")
+# -----------------------------------------------------------------------------
+# Main simulation loop
+# -----------------------------------------------------------------------------
+
+cat("=== Non-linear simulation study ===\n")
 cat(sprintf("p: %s\n", paste(P_VALUES, collapse = ", ")))
 cat(sprintf("n: %s\n", paste(N_VALUES, collapse = ", ")))
-cat(sprintf("Trials: %d, alpha: %.2f, B: %d\n\n", N_TRIALS, ALPHA, N_PERM))
+cat(sprintf("Trials: %d, alpha: %.2f, permutations: %d\n\n",
+            N_TRIALS, ALPHA, N_PERM))
 
 results <- list()
 
@@ -53,12 +71,12 @@ for (p in P_VALUES) {
     for (trial in seq_len(N_TRIALS)) {
       if (trial %% 10 == 0) cat(sprintf("  Trial %d/%d\n", trial, N_TRIALS))
 
-      # Generate random DAG and data
+      # Reproducible seed built from the configuration indices.
       set.seed(1000 * p + 100 * n + trial)
-      dag <- random_dag(p, EDGE_DENSITY)
+      dag  <- random_dag(p, EDGE_DENSITY)
       data <- generate_sem_data(n, dag, nonlinear_frac = NONLINEAR_FRAC)
 
-      # --- Proposed method ---
+      # --- Proposed additive-HSIC method ---
       t0 <- proc.time()
       result_prop <- tryCatch(
         discover_dag(data, alpha = ALPHA, n_perm = N_PERM, verbose = FALSE),
@@ -70,14 +88,14 @@ for (p in P_VALUES) {
         metrics_prop <- evaluate_dag(result_prop$adjacency, dag)
         trial_results <- rbind(trial_results, data.frame(
           trial = trial, method = "Proposed",
-          F1 = metrics_prop["F1"], Accuracy = metrics_prop["Accuracy"],
+          F1 = metrics_prop["F1"],   Accuracy = metrics_prop["Accuracy"],
           SHD = metrics_prop["SHD"], MSE = metrics_prop["MSE"],
           Misoriented = metrics_prop["Misoriented"], Time = time_prop,
           stringsAsFactors = FALSE
         ))
       }
 
-      # --- LiNGAM ---
+      # --- LiNGAM baseline ---
       t0 <- proc.time()
       result_ling <- tryCatch(
         lingam_discover(data, verbose = FALSE),
@@ -89,7 +107,7 @@ for (p in P_VALUES) {
         metrics_ling <- evaluate_dag(result_ling$adjacency, dag)
         trial_results <- rbind(trial_results, data.frame(
           trial = trial, method = "LiNGAM",
-          F1 = metrics_ling["F1"], Accuracy = metrics_ling["Accuracy"],
+          F1 = metrics_ling["F1"],   Accuracy = metrics_ling["Accuracy"],
           SHD = metrics_ling["SHD"], MSE = metrics_ling["MSE"],
           Misoriented = metrics_ling["Misoriented"], Time = time_ling,
           stringsAsFactors = FALSE
@@ -103,7 +121,7 @@ for (p in P_VALUES) {
   }
 }
 
-# Combine and save
+# Combine and persist.
 all_results <- do.call(rbind, results)
 rownames(all_results) <- NULL
 saveRDS(all_results, "results/sim_nonlinear.rds")

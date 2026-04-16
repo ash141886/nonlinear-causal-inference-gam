@@ -1,19 +1,26 @@
 # =============================================================================
-# Plotting: Non-linear Simulation Figures (Figures 1-6) -- Publication-grade
+# Simulation figures from the non-linear study
 # =============================================================================
 #
-# Reads results from scripts/01_simulation_nonlinear.R and generates the
-# non-linear simulation figures in the journal-ready style: italic math symbols
-# for n and p (via plotmath), en-dash in "Kolmogorov-Smirnov", explicit x-axis
-# ticks matching the simulation grid, clean captions, and a unified theme with
-# adequate base font size for single-column / 180 mm PDF reproduction.
+# Reads the long-format results saved by
+# \code{scripts/01_simulation_nonlinear.R} and produces six two-panel
+# figures, one per performance metric. Each figure shows the median of
+# the metric across Monte Carlo replicates, first as a function of the
+# sample size (panels faceted by the number of variables p) and then as
+# a function of the number of variables (panels faceted by the sample
+# size n). The styling aims at a clean, journal-quality look: italic
+# math symbols for n and p via plotmath, en-dash in compound names,
+# explicit x-axis ticks that match the simulation grid, and a base font
+# size that remains legible under typical two-column reductions.
 #
-# Figure 7 (linear-case diagnostics, Linear_R5.pdf) is produced directly by
-# scripts/02_simulation_linear.R and is NOT drawn here.
+# The linear-case residual diagnostics
+# (\code{figures/linear_diagnostics.pdf}) are produced directly by
+# \code{scripts/02_simulation_linear.R}, which runs its own simulation
+# and plotting in a single pass; nothing further is done for it here.
 #
 # Usage:  Rscript scripts/05_plot_simulations.R
-# Output: figures/f1_r34.pdf, accuracy_r34.pdf, misoriented_r34.pdf,
-#         shd_r34.pdf, mse_r34.pdf, time_r34.pdf
+# Output: figures/f1.pdf, accuracy.pdf, misoriented.pdf, shd.pdf,
+#         mse.pdf, time.pdf
 # =============================================================================
 
 library(ggplot2)
@@ -23,11 +30,15 @@ library(gridExtra)
 
 dir.create("figures", showWarnings = FALSE)
 
-# --- Load Results ------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Load simulation results
+# -----------------------------------------------------------------------------
 
 sim_nl <- readRDS("results/sim_nonlinear.rds")
 
-# --- Publication Theme -------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Global plotting theme and palette
+# -----------------------------------------------------------------------------
 
 theme_paper <- theme_bw(base_size = 12) +
   theme(
@@ -52,15 +63,16 @@ method_colors    <- c("Proposed" = "#1f77b4", "LiNGAM" = "#d62728")
 method_linetypes <- c("Proposed" = "dashed",  "LiNGAM" = "solid")
 method_shapes    <- c("Proposed" = 17,        "LiNGAM" = 16)
 
-# Italic math labels (plotmath): x-axis uses italic n / p, facet strips use
-# "n = <value>" and "p = <value>" with italic symbol.
+# Italic math for the axis and facet labels.
 xlab_n <- expression("Sample size," ~ italic(n))
 xlab_p <- expression("Number of variables," ~ italic(p))
 
 facet_n_labeller <- as_labeller(function(v) paste0("italic(n)==", v), default = label_parsed)
 facet_p_labeller <- as_labeller(function(v) paste0("italic(p)==", v), default = label_parsed)
 
-# --- Helper: Two-panel plot (metric vs. n, metric vs. p) ---------------------
+# -----------------------------------------------------------------------------
+# Helper: two-panel plot of one metric (vs. n and vs. p)
+# -----------------------------------------------------------------------------
 
 make_dual_plot <- function(data, metric, ylabel, title_prefix,
                            filename, width = 10, height = 6) {
@@ -69,7 +81,7 @@ make_dual_plot <- function(data, metric, ylabel, title_prefix,
     group_by(p, n, method) %>%
     summarise(value = median(.data[[metric]], na.rm = TRUE), .groups = "drop")
 
-  # Panel 1: metric vs. sample size, faceted by p (italic p = <value>)
+  # Upper panel: metric vs. sample size, faceted by p.
   p1 <- ggplot(medians, aes(x = n, y = value, color = method,
                             linetype = method, shape = method)) +
     geom_line(linewidth = 0.7) + geom_point(size = 2.2) +
@@ -82,7 +94,7 @@ make_dual_plot <- function(data, metric, ylabel, title_prefix,
          title = bquote(.(title_prefix) ~ "vs. sample size" ~ italic(n))) +
     theme_paper
 
-  # Panel 2: metric vs. number of variables, faceted by n (italic n = <value>)
+  # Lower panel: metric vs. number of variables, faceted by n.
   p2 <- ggplot(medians, aes(x = p, y = value, color = method,
                             linetype = method, shape = method)) +
     geom_line(linewidth = 0.7) + geom_point(size = 2.2) +
@@ -101,33 +113,23 @@ make_dual_plot <- function(data, metric, ylabel, title_prefix,
   cat("Saved:", filename, "\n")
 }
 
-# --- Generate Figures 1-6 ----------------------------------------------------
+# -----------------------------------------------------------------------------
+# Produce the six metric figures
+# -----------------------------------------------------------------------------
 
 cat("Generating simulation figures...\n\n")
 
-# Figure 1: Directed F1 score
-make_dual_plot(sim_nl, "F1", "Directed F1", "Directed F1", "f1_r34.pdf")
-
-# Figure 2: Graph accuracy
-make_dual_plot(sim_nl, "Accuracy", "Graph accuracy", "Graph accuracy",
-               "accuracy_r34.pdf")
-
-# Figure 3: Misoriented edges
-make_dual_plot(sim_nl, "Misoriented", "Misoriented edges", "Misoriented edges",
-               "misoriented_r34.pdf")
-
-# Figure 4: Structural Hamming distance
-make_dual_plot(sim_nl, "SHD", "Structural Hamming distance",
-               "Structural Hamming distance", "shd_r34.pdf")
-
-# Figure 5: Adjacency MSE
-make_dual_plot(sim_nl, "MSE", "Adjacency MSE", "Adjacency MSE", "mse_r34.pdf")
-
-# Figure 6: Runtime
-make_dual_plot(sim_nl, "Time", "Runtime (seconds)", "Runtime", "time_r34.pdf")
-
-# Note: Figure 7 (linear-case residual diagnostics, Linear_R5.pdf) is produced
-# directly by scripts/02_simulation_linear.R, which runs its own simulation
-# and plotting in a single pass. No action is needed here.
+make_dual_plot(sim_nl, "F1",          "Directed F1",                "Directed F1",
+               "f1.pdf")
+make_dual_plot(sim_nl, "Accuracy",    "Graph accuracy",             "Graph accuracy",
+               "accuracy.pdf")
+make_dual_plot(sim_nl, "Misoriented", "Misoriented edges",          "Misoriented edges",
+               "misoriented.pdf")
+make_dual_plot(sim_nl, "SHD",         "Structural Hamming distance","Structural Hamming distance",
+               "shd.pdf")
+make_dual_plot(sim_nl, "MSE",         "Adjacency MSE",              "Adjacency MSE",
+               "mse.pdf")
+make_dual_plot(sim_nl, "Time",        "Runtime (seconds)",          "Runtime",
+               "time.pdf")
 
 cat("\nAll simulation figures generated.\n")

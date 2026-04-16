@@ -1,11 +1,19 @@
 # =============================================================================
-# Concurvity Diagnostic for the Wine Leave-One-Out Additive Models
+# Concurvity diagnostic for the wine leave-one-out additive models
 # =============================================================================
-# Addresses Remark 1 in the manuscript (Section 3.1): reports mgcv::concurvity()
-# for every (target, excluded-predictor) pair fitted on the red-wine data.
+#
+# For every ordered pair (target, excluded-predictor) of red-wine
+# variables, fits the reduced additive model used by the discovery
+# procedure and records the concurvity indices returned by
+# \code{mgcv::concurvity()}. Concurvity quantifies the extent to which
+# a smooth term can be approximated by a combination of the remaining
+# smooths; values close to one signal near-collinearity in the smooth
+# basis and would undermine the interpretation of the residuals as a
+# genuine leave-one-out error signal. The full summary table and a
+# terse text digest are written to \code{results/}.
 #
 # Output:
-#   - results/wine_concurvity.csv    (one row per reduced model)
+#   - results/wine_concurvity.csv         (one row per reduced model)
 #   - results/wine_concurvity_summary.txt
 #
 # Usage:  Rscript scripts/07_wine_concurvity.R
@@ -15,7 +23,9 @@ suppressPackageStartupMessages({ library(mgcv) })
 
 dir.create("results", showWarnings = FALSE)
 
-# --- Data --------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Data
+# -----------------------------------------------------------------------------
 
 load_wine_data <- function() {
   if (!file.exists("data/winequality-red.csv")) {
@@ -33,9 +43,11 @@ var_names <- colnames(wine_data)
 n_vars    <- ncol(wine_data)
 n_samples <- nrow(wine_data)
 
-cat(sprintf("Wine red data: %d x %d\n\n", n_samples, n_vars))
+cat(sprintf("Red-wine data: %d x %d\n\n", n_samples, n_vars))
 
-# --- Leave-one-out reduced model + concurvity --------------------------------
+# -----------------------------------------------------------------------------
+# Leave-one-out reduced model and concurvity extraction
+# -----------------------------------------------------------------------------
 
 fit_reduced_gam <- function(target, exclude, gam_k_max = 10) {
   predictors <- setdiff(seq_len(n_vars), c(target, exclude))
@@ -55,19 +67,21 @@ fit_reduced_gam <- function(target, exclude, gam_k_max = 10) {
   )
 }
 
-# mgcv::concurvity() returns a 3 x (n_smooth + 1) matrix with rows
-# "worst", "observed", "estimate".  We record the maximum across non-"para"
-# smooths (the intercept column is excluded).
+# The \code{mgcv::concurvity(..., full = TRUE)} output is a 3-by-(n_smooth + 1)
+# matrix with rows "worst", "observed", "estimate". The maximum across the
+# actual smooth terms (the intercept column is excluded) is retained as a
+# single per-model scalar for each row.
 max_concurvity <- function(m) {
   cc <- tryCatch(mgcv::concurvity(m, full = TRUE), error = function(e) NULL)
   if (is.null(cc)) return(c(worst = NA_real_, observed = NA_real_, estimate = NA_real_))
-  # Drop the "para" column if present
   cc <- cc[, setdiff(colnames(cc), "para"), drop = FALSE]
   if (ncol(cc) == 0) return(c(worst = 0, observed = 0, estimate = 0))
   apply(cc, 1, max, na.rm = TRUE)
 }
 
-# --- Loop over all (target, excluded) pairs ----------------------------------
+# -----------------------------------------------------------------------------
+# Loop over all (target, excluded) pairs
+# -----------------------------------------------------------------------------
 
 cat("Fitting 12 x 11 = 132 reduced additive models and computing concurvity...\n")
 rows <- list(); k <- 0
@@ -92,7 +106,9 @@ df <- do.call(rbind, rows)
 
 write.csv(df, "results/wine_concurvity.csv", row.names = FALSE)
 
-# --- Summary ------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Summary statistics
+# -----------------------------------------------------------------------------
 
 summ <- function(x) c(min = min(x, na.rm = TRUE),
                       median = median(x, na.rm = TRUE),
@@ -102,10 +118,10 @@ summ <- function(x) c(min = min(x, na.rm = TRUE),
                       frac_above_0.8 = mean(x >= 0.8, na.rm = TRUE))
 
 sink("results/wine_concurvity_summary.txt")
-cat("Wine red-wine leave-one-out reduced-GAM concurvity diagnostics\n")
-cat("Data: n = 1599, p = 12. 132 reduced models (one per (target, excluded) pair).\n\n")
-cat("'worst'    : worst-case (full-basis) concurvity index of smooth terms\n")
-cat("'observed' : concurvity among the smooths that are actually used\n")
+cat("Leave-one-out reduced-GAM concurvity diagnostics (red wine)\n")
+cat("Data: n = 1599, p = 12. 132 reduced models (one per ordered (target, excluded) pair).\n\n")
+cat("'worst'    : worst-case (full-basis) concurvity index over smooth terms\n")
+cat("'observed' : concurvity among the smooths actually selected\n")
 cat("'estimate' : data-driven concurvity estimate\n\n")
 
 for (nm in c("conc_worst", "conc_observed", "conc_estimate")) {

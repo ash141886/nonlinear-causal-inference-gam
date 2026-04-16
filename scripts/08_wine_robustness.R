@@ -1,30 +1,34 @@
 # =============================================================================
-# Robustness Sensitivity Analysis for the Wine Two-Stage Procedure
+# Sensitivity analysis for the wine two-stage procedure
 # =============================================================================
-# Re-runs the red-wine two-stage additive-HSIC procedure under a local grid
-# of (a) GAM basis-dimension caps (+/-20% around the default k=10) and
-# (b) kernel bandwidths (+/-50% around the median-heuristic default).
 #
-# For each configuration we record:
-#   - final F1 / SHD / MSE / Accuracy against the literature reference
-#   - the ranked list of the top-10 pairs by full-data HSIC and its
-#     Spearman correlation with the default ranking
-#   - EDFs of the three partial-effect GAMs used in Figure 9
+# Re-runs the red-wine two-stage additive-HSIC procedure over a small
+# grid of tuning parameters to quantify its sensitivity to:
 #
-# Addresses the robustness claim in Section 5 (manuscript):
-#   "EDF values varied by less than 15% ... Spearman correlation exceeding 0.90".
+#   (a) the per-smooth basis-dimension cap k (varied by +/-20% around
+#       the default k = 10);
+#   (b) the Gaussian-RBF bandwidth (varied by +/-50% around the default
+#       median-heuristic bandwidth).
+#
+# For each configuration the script records the final F1, SHD, adjacency
+# MSE and accuracy against the literature-informed reference; the
+# Spearman rank correlation of the full 66-pair score list with the
+# baseline configuration; and the effective degrees of freedom of the
+# three partial-effect GAMs used in the diagnostic figure.
 #
 # Output:
 #   - results/wine_robustness.csv  (one row per configuration)
 #
-# Usage: Rscript scripts/08_wine_robustness.R
+# Usage:  Rscript scripts/08_wine_robustness.R
 # =============================================================================
 
 suppressPackageStartupMessages({ library(mgcv) })
 
 dir.create("results", showWarnings = FALSE)
 
-# --- Wine data + reference ---------------------------------------------------
+# -----------------------------------------------------------------------------
+# Wine data and reference graph
+# -----------------------------------------------------------------------------
 
 load_wine_data <- function() {
   if (!file.exists("data/winequality-red.csv")) {
@@ -53,7 +57,9 @@ get_reference_dag <- function(var_names) {
   dag
 }
 
-# --- Kernel / HSIC helpers (with a bandwidth multiplier) --------------------
+# -----------------------------------------------------------------------------
+# Kernel and HSIC helpers (with a bandwidth multiplier for sensitivity runs)
+# -----------------------------------------------------------------------------
 
 rbf_kernel <- function(x, sigma) {
   x <- as.matrix(x)
@@ -78,7 +84,9 @@ hsic_biased_bw <- function(x, y, bw_mult = 1.0) {
   hsic_from_kernels(center_kernel(K), L, n)
 }
 
-# --- Reduced GAM with configurable basis cap --------------------------------
+# -----------------------------------------------------------------------------
+# Reduced GAM with configurable basis cap
+# -----------------------------------------------------------------------------
 
 compute_residuals_wine <- function(data, target, exclude, var_names, gam_k_max) {
   n_vars <- ncol(data); n_samples <- nrow(data)
@@ -103,7 +111,9 @@ compute_residuals_wine <- function(data, target, exclude, var_names, gam_k_max) 
   } else data[[tn]] - mean(data[[tn]])
 }
 
-# --- Evaluation --------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Evaluation
+# -----------------------------------------------------------------------------
 
 evaluate_dag_wine <- function(est, ref) {
   n <- nrow(ref)
@@ -116,7 +126,9 @@ evaluate_dag_wine <- function(est, ref) {
     SHD = sum(abs(est - ref)), MSE = mean((est - ref)^2))
 }
 
-# --- Cycle breaking ----------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Acyclicity post-processing
+# -----------------------------------------------------------------------------
 
 find_cycle_wine <- function(adj) {
   n <- nrow(adj); col <- rep("w", n); par <- rep(NA_integer_, n)
@@ -151,20 +163,22 @@ enforce_acyclicity_wine <- function(adj, scores) {
   adj
 }
 
-# --- Core two-stage pipeline ------------------------------------------------
+# -----------------------------------------------------------------------------
+# Core two-stage pipeline
+# -----------------------------------------------------------------------------
 
 run_two_stage <- function(wine_data, gam_k_max = 10, bw_mult = 1.0,
                           screen_alpha = 0.20, k_target = 10,
                           n_sub = 200, b_perm = 1000, seed = 42) {
   var_names <- colnames(wine_data); n_vars <- ncol(wine_data)
 
-  # Stage 1: leave-one-out residuals (full data)
+  # Stage 1: leave-one-out residuals on the full sample.
   rc <- list()
   for (i in 1:n_vars) for (j in 1:n_vars) if (i != j)
     rc[[paste(i, j, sep = "_")]] <-
       compute_residuals_wine(wine_data, i, j, var_names, gam_k_max)
 
-  # Stage 2: HSIC + permutation on a subsample
+  # Stage 2: HSIC and permutation p-values on a sub-sample.
   set.seed(seed)
   sub_idx <- sample.int(nrow(wine_data), n_sub)
   pair_results <- list(); idx <- 0
@@ -237,9 +251,11 @@ run_two_stage <- function(wine_data, gam_k_max = 10, bw_mult = 1.0,
        pair_keys = sapply(pair_results, `[[`, "pair_key"))
 }
 
-# --- Partial-effect EDFs (Figure 9) -----------------------------------------
+# -----------------------------------------------------------------------------
+# Effective degrees of freedom for the three representative smooths
+# -----------------------------------------------------------------------------
 
-fig9_edfs <- function(wine, gam_k_max = 10) {
+partial_effect_edfs <- function(wine, gam_k_max = 10) {
   f1 <- gam(density       ~ s(alcohol,     k = gam_k_max),
             data = wine, method = "REML", gamma = 1.4)
   f2 <- gam(fixed.acidity ~ s(citric.acid, k = gam_k_max),
@@ -251,19 +267,21 @@ fig9_edfs <- function(wine, gam_k_max = 10) {
     edf_pH_fix  = sum(f3$edf))
 }
 
-# --- Run the grid ------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Run the sensitivity grid
+# -----------------------------------------------------------------------------
 
 wine <- load_wine_data()
 
-# Baseline (k = 10, bw_mult = 1.0) -----------------------------------------
-cat("Baseline run (k=10, bw_mult=1.0)...\n")
-base <- run_two_stage(wine, gam_k_max = 10, bw_mult = 1.0)
-base_edfs <- fig9_edfs(wine, 10)
+cat("Baseline run (k = 10, bw_mult = 1.0)...\n")
+base      <- run_two_stage(wine, gam_k_max = 10, bw_mult = 1.0)
+base_edfs <- partial_effect_edfs(wine, 10)
 
-# Grid: basis dim +/- 20%, bandwidth +/- 50% --------------------------------
+# Grid: basis cap varies by +/-20% around 10; bandwidth multiplier varies
+# by +/-50% around the median-heuristic default.
 grid <- expand.grid(
-  gam_k_max = c(8, 10, 12),                     # +/-20% around 10
-  bw_mult   = c(0.5, 1.0, 1.5),                 # +/-50% around median
+  gam_k_max = c(8, 10, 12),
+  bw_mult   = c(0.5, 1.0, 1.5),
   stringsAsFactors = FALSE
 )
 
@@ -271,15 +289,16 @@ rows <- list()
 for (r in seq_len(nrow(grid))) {
   k_cfg  <- grid$gam_k_max[r]
   bw_cfg <- grid$bw_mult[r]
-  cat(sprintf("Config %d/%d: k=%d bw_mult=%.1f\n",
+  cat(sprintf("Config %d/%d: k = %d, bw_mult = %.1f\n",
               r, nrow(grid), k_cfg, bw_cfg))
-  out <- run_two_stage(wine, gam_k_max = k_cfg, bw_mult = bw_cfg)
-  edfs <- fig9_edfs(wine, k_cfg)
+  out  <- run_two_stage(wine, gam_k_max = k_cfg, bw_mult = bw_cfg)
+  edfs <- partial_effect_edfs(wine, k_cfg)
 
-  # Spearman rank correlation between this and the baseline score ordering
+  # Spearman rank correlation of the pair-wise scores with the baseline
+  # configuration (stability of the ranking used by the effect-size filter).
   rho <- suppressWarnings(cor(out$scores, base$scores, method = "spearman"))
 
-  # EDF deviations relative to baseline (as fractions)
+  # Relative EDF deviation from the baseline values (as fractions).
   rel_edf <- abs(edfs - base_edfs) / base_edfs
 
   rows[[r]] <- data.frame(
@@ -301,20 +320,22 @@ df <- do.call(rbind, rows)
 
 write.csv(df, "results/wine_robustness.csv", row.names = FALSE)
 
-# --- Summary -----------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Summary
+# -----------------------------------------------------------------------------
 
-cat("\n-- Robustness summary (wine, two-stage) --\n")
-cat(sprintf("Baseline EDFs: alc->den=%.2f, citric->fix=%.2f, pH->fix=%.2f\n",
+cat("\n-- Sensitivity summary (red wine, two-stage) --\n")
+cat(sprintf("Baseline EDFs: alcohol -> density = %.2f, citric -> fixed = %.2f, pH -> fixed = %.2f\n",
             base_edfs["edf_alc_den"], base_edfs["edf_cit_fix"], base_edfs["edf_pH_fix"]))
 
 non_base <- df$gam_k_max != 10 | df$bw_mult != 1.0
-cat(sprintf("Max relative EDF deviation across grid (excluding baseline): %.1f%%\n",
+cat(sprintf("Max relative EDF deviation across the grid (excluding baseline): %.1f%%\n",
             100 * max(df$rel_edf_max[non_base])))
-cat(sprintf("Min Spearman rank-correlation of pair scores vs baseline  : %.3f\n",
+cat(sprintf("Min Spearman rank correlation of pair scores vs. baseline    : %.3f\n",
             min(df$spearman_vs_base[non_base])))
-cat(sprintf("F1 range across grid                                       : [%.3f, %.3f]\n",
+cat(sprintf("F1 range across the grid                                      : [%.3f, %.3f]\n",
             min(df$F1), max(df$F1)))
-cat(sprintf("SHD range across grid                                      : [%d, %d]\n",
+cat(sprintf("SHD range across the grid                                     : [%d, %d]\n",
             min(df$SHD), max(df$SHD)))
 
 cat("\nWrote results/wine_robustness.csv\n")

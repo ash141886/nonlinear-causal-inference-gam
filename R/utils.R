@@ -1,37 +1,48 @@
 # =============================================================================
-# Utility Functions for Additive-HSIC Causal Discovery
+# Utility functions for additive-HSIC causal discovery
 # =============================================================================
 #
-# Shared helper functions: kernel computation, HSIC estimation, evaluation
-# metrics, and data loading.
+# Provides the shared building blocks used by the main discovery procedure
+# and by the analysis scripts:
+#   * Gaussian-RBF kernel construction and median-heuristic bandwidth
+#   * Biased empirical Hilbert-Schmidt Independence Criterion (HSIC)
+#   * Graph-level evaluation metrics (directed F1, accuracy, SHD, MSE)
+#   * Data-generating mechanisms for linear and non-linear structural
+#     equation models with non-Gaussian (Laplace/uniform) noise
+#   * Loaders for the UCI Wine Quality datasets and a literature-based
+#     reference DAG for the red-wine variables
 #
-# Reference:
-#   Islam, M.A. and Suzuki, J. "Non-linear Causal Inference in Observational
-#   Data using Additive Models and Kernel-based Independence Testing"
-#
-# Repository: https://github.com/ash141886/nonlinear-causal-inference-gam
+# All routines are written to be callable stand-alone; no global state is
+# assumed beyond the supplied arguments.
 # =============================================================================
 
-# --- Kernel Functions --------------------------------------------------------
 
-#' Gaussian RBF kernel matrix
+# -----------------------------------------------------------------------------
+# Kernel construction
+# -----------------------------------------------------------------------------
+
+#' Gaussian radial-basis-function kernel matrix
 #'
-#' @param x Numeric vector or matrix (n x d)
-#' @param sigma Bandwidth parameter
-#' @return n x n kernel matrix
+#' Computes the n-by-n matrix with entries
+#' \eqn{K_{ij} = \exp(-\|x_i - x_j\|_2^2 / (2 \sigma^2))}.
+#'
+#' @param x Numeric vector or matrix of n rows (samples).
+#' @param sigma Positive scalar bandwidth.
+#' @return An n-by-n symmetric positive-semidefinite matrix.
 rbf_kernel <- function(x, sigma) {
   x <- as.matrix(x)
   D <- as.matrix(dist(x))
   exp(-D^2 / (2 * sigma^2))
 }
 
-#' Median heuristic bandwidth
+#' Median-heuristic bandwidth for Gaussian kernels
 #'
-#' Sets bandwidth to the median of all pairwise Euclidean distances.
-#' See Gretton et al. (2008) for justification.
+#' Returns the median of all pairwise Euclidean distances between samples,
+#' a standard data-driven choice for the Gaussian-RBF bandwidth.
 #'
-#' @param x Numeric vector or matrix
-#' @return Scalar bandwidth
+#' @param x Numeric vector or matrix (n samples).
+#' @return Positive scalar; falls back to 1 if the median is non-positive
+#'   or non-finite (degenerate inputs).
 median_bandwidth <- function(x) {
   x <- as.matrix(x)
   D <- as.matrix(dist(x))
@@ -40,28 +51,35 @@ median_bandwidth <- function(x) {
   med
 }
 
-#' Center a kernel matrix
+#' Centre a kernel matrix
 #'
-#' Applies H K H where H = I_n - (1/n) 1 1^T
+#' Applies the two-sided projection
+#' \eqn{H K H} with \eqn{H = I_n - n^{-1} \mathbf{1} \mathbf{1}^\top},
+#' which removes the mean from each row and each column.
 #'
-#' @param K n x n kernel matrix
-#' @return Centered kernel matrix
+#' @param K An n-by-n kernel matrix.
+#' @return The centred kernel matrix.
 center_kernel <- function(K) {
   n <- nrow(K)
   rm <- rowMeans(K)
   K - outer(rm, rep(1, n)) - outer(rep(1, n), rm) + mean(rm)
 }
 
-# --- HSIC Estimation ---------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# HSIC estimation
+# -----------------------------------------------------------------------------
 
 #' Biased empirical HSIC
 #'
-#' Computes (1/n^2) * tr(K H L H) using Gaussian RBF kernels
-#' with median-heuristic bandwidth.
+#' Returns \eqn{\widehat{\mathrm{HSIC}}(X, Y) = n^{-2} \mathrm{tr}(K H L H)},
+#' the standard biased V-statistic estimator, with Gaussian-RBF kernels
+#' whose bandwidths are set by the median heuristic separately for each
+#' variable.
 #'
-#' @param x Numeric vector or matrix (n samples)
-#' @param y Numeric vector or matrix (n samples)
-#' @return Scalar HSIC value
+#' @param x Numeric vector or matrix (n samples).
+#' @param y Numeric vector or matrix (n samples).
+#' @return Non-negative scalar.
 hsic_biased <- function(x, y) {
   x <- as.matrix(x)
   y <- as.matrix(y)
@@ -72,30 +90,43 @@ hsic_biased <- function(x, y) {
   as.numeric(sum(Kc * L) / n^2)
 }
 
-#' HSIC from precomputed kernel matrices
+#' HSIC from pre-computed kernel matrices
 #'
-#' @param Kc Centered kernel matrix for first variable
-#' @param L  Kernel matrix for second variable (uncentered)
-#' @param n  Sample size
-#' @return Scalar HSIC value
+#' Convenience wrapper that avoids recomputing K and L in tight permutation
+#' loops. The first argument must already be centred; the second is used
+#' as-is.
+#'
+#' @param Kc Centred kernel matrix for the first variable.
+#' @param L Kernel matrix for the second variable.
+#' @param n Sample size.
+#' @return Non-negative scalar.
 hsic_from_kernels <- function(Kc, L, n) {
   as.numeric(sum(Kc * L) / n^2)
 }
 
-# --- Evaluation Metrics ------------------------------------------------------
 
-#' Evaluate estimated DAG against a reference
+# -----------------------------------------------------------------------------
+# Graph-level evaluation metrics
+# -----------------------------------------------------------------------------
+
+#' Compare an estimated DAG against a reference DAG
 #'
-#' Computes directed F1, graph accuracy, SHD, and adjacency MSE.
+#' Reports the standard directed-edge metrics together with a scalar
+#' structural Hamming distance and an adjacency mean-squared error.
+#' A reversed edge is counted as one false positive and one false negative
+#' and therefore contributes 2 to the SHD.
 #'
-#' @param est_dag Estimated adjacency matrix (p x p, binary)
-#' @param ref_dag Reference adjacency matrix (p x p, binary)
-#' @return Named vector: F1, Accuracy, SHD, MSE
+#' @param est_dag p-by-p binary adjacency matrix (estimated).
+#' @param ref_dag p-by-p binary adjacency matrix (reference).
+#' @return A named numeric vector: \code{F1}, \code{Accuracy}, \code{SHD},
+#'   \code{MSE}, \code{TP}, \code{FP}, \code{FN}, \code{Misoriented}.
+#'   \code{Misoriented} counts edges that are present in the estimate but
+#'   reversed relative to the reference; it is reported for diagnostic use
+#'   and is already accounted for inside \code{SHD}.
 evaluate_dag <- function(est_dag, ref_dag) {
   stopifnot(all(dim(est_dag) == dim(ref_dag)))
   p <- nrow(est_dag)
 
-  # Directed: TP, FP, FN
   tp <- sum(est_dag == 1 & ref_dag == 1)
   fp <- sum(est_dag == 1 & ref_dag == 0)
   fn <- sum(est_dag == 0 & ref_dag == 1)
@@ -104,19 +135,15 @@ evaluate_dag <- function(est_dag, ref_dag) {
   recall    <- if (tp + fn > 0) tp / (tp + fn) else 0
   f1        <- if (precision + recall > 0) 2 * precision * recall / (precision + recall) else 0
 
-  # Graph accuracy: fraction of correctly classified ordered pairs
-  n_pairs <- p * (p - 1)
-  correct <- sum(est_dag == ref_dag) - p  # exclude diagonal
+  # Accuracy: fraction of correctly classified ordered off-diagonal pairs.
+  n_pairs  <- p * (p - 1)
+  correct  <- sum(est_dag == ref_dag) - p      # subtract the p diagonal matches
   accuracy <- correct / n_pairs
 
-  # SHD: cell-count convention (sum of per-cell differences)
-  # This matches the formula used for the wine analysis (evaluate_dag_wine)
-  # and the manuscript-reported values. A reversed edge contributes 2.
-  extra   <- sum(est_dag == 1 & ref_dag == 0)
-  missing <- sum(est_dag == 0 & ref_dag == 1)
-  shd     <- sum(abs(est_dag - ref_dag))
-  # Diagnostic: count reversed-orientation edges (for reporting only,
-  # NOT added to SHD; already captured via extra + missing).
+  # Structural Hamming distance: cell-count convention.
+  shd <- sum(abs(est_dag - ref_dag))
+
+  # Misoriented edges: present in the estimate, reversed in the reference.
   misoriented <- 0
   for (i in seq_len(p)) {
     for (j in seq_len(p)) {
@@ -126,22 +153,27 @@ evaluate_dag <- function(est_dag, ref_dag) {
     }
   }
 
-  # MSE: mean squared difference
   mse <- mean((est_dag - ref_dag)^2)
 
   c(F1 = f1, Accuracy = accuracy, SHD = shd, MSE = mse,
     TP = tp, FP = fp, FN = fn, Misoriented = misoriented)
 }
 
-# --- Data Loading ------------------------------------------------------------
 
-#' Load and standardize UCI Wine Quality data
+# -----------------------------------------------------------------------------
+# Data loading
+# -----------------------------------------------------------------------------
+
+#' Load and standardise a UCI Wine Quality dataset
 #'
-#' Downloads from UCI repository if not present locally.
+#' Reads the semicolon-separated CSV from \code{data_dir}, downloading it
+#' from the UCI Machine Learning Repository on first use, and standardises
+#' every column to mean zero and unit variance. The resulting frame is used
+#' by the wine-analysis scripts.
 #'
-#' @param color "red" or "white"
-#' @param data_dir Directory for data files
-#' @return Standardized data frame
+#' @param color Either "red" or "white".
+#' @param data_dir Destination directory for cached data files.
+#' @return A data frame with n rows and p standardised numeric columns.
 load_wine_data <- function(color = "red", data_dir = "data") {
   filename <- paste0("winequality-", color, ".csv")
   filepath <- file.path(data_dir, filename)
@@ -164,55 +196,65 @@ load_wine_data <- function(color = "red", data_dir = "data") {
   wine
 }
 
-#' Construct literature-based reference DAG for wine data
+#' Literature-based reference DAG for the red-wine variables
 #'
-#' Based on Jackson (2020) and Waterhouse et al. (2024).
+#' Encodes well-established chemical relationships: titratable acids drive
+#' pH; citric acid contributes to fixed acidity; residual sugar and alcohol
+#' jointly determine density; free sulphur dioxide is a component of total
+#' sulphur dioxide; and alcohol, volatile acidity, and sulphates influence
+#' the sensory quality score. The returned matrix is intended only as a
+#' post-hoc comparator and not as ground truth.
 #'
-#' @param var_names Variable names from data
-#' @return Binary adjacency matrix
+#' @param var_names Character vector of variable names (order preserved).
+#' @return A p-by-p binary adjacency matrix with row/column names.
 get_wine_reference_dag <- function(var_names) {
   p <- length(var_names)
   dag <- matrix(0, p, p, dimnames = list(var_names, var_names))
 
-  # Acid -> pH
-  dag["fixed.acidity", "pH"] <- 1
-  dag["volatile.acidity", "pH"] <- 1
-  dag["citric.acid", "pH"] <- 1
+  # Acids -> pH
+  dag["fixed.acidity",   "pH"] <- 1
+  dag["volatile.acidity","pH"] <- 1
+  dag["citric.acid",     "pH"] <- 1
 
-  # Citric acid -> Fixed acidity
+  # Citric acid -> fixed acidity
   dag["citric.acid", "fixed.acidity"] <- 1
 
-  # Density relationships
+  # Mass-balance relationships on density
   dag["residual.sugar", "density"] <- 1
-  dag["alcohol", "density"] <- 1
+  dag["alcohol",        "density"] <- 1
 
-  # SO2
+  # Sulphur dioxide: free is a component of total
   dag["free.sulfur.dioxide", "total.sulfur.dioxide"] <- 1
 
-  # Quality
-  dag["alcohol", "quality"] <- 1
-  dag["volatile.acidity", "quality"] <- 1
-  dag["sulphates", "quality"] <- 1
+  # Sensory quality
+  dag["alcohol",         "quality"] <- 1
+  dag["volatile.acidity","quality"] <- 1
+  dag["sulphates",       "quality"] <- 1
 
   dag
 }
 
-# --- Random DAG Generation ---------------------------------------------------
 
-#' Generate a random DAG adjacency matrix
+# -----------------------------------------------------------------------------
+# Random DAG generation
+# -----------------------------------------------------------------------------
+
+#' Generate a random DAG
 #'
-#' @param p Number of variables
-#' @param edge_density Target edge density (fraction of possible edges)
-#' @return Binary adjacency matrix (lower-triangular in topological order)
+#' Samples a random permutation of the p nodes (treated as a topological
+#' order) and then uniformly retains a target fraction of the upper-
+#' triangular entries as directed edges.
+#'
+#' @param p Number of variables.
+#' @param edge_density Target fraction of the p(p-1)/2 possible edges.
+#' @return A p-by-p binary adjacency matrix encoding a DAG.
 random_dag <- function(p, edge_density = 0.3) {
   n_possible <- p * (p - 1) / 2
-  n_edges <- round(n_possible * edge_density)
+  n_edges    <- round(n_possible * edge_density)
 
-  # Random topological ordering
   order <- sample(p)
-  dag <- matrix(0, p, p)
+  dag   <- matrix(0, p, p)
 
-  # Add edges from earlier to later in ordering
   possible <- which(upper.tri(dag), arr.ind = TRUE)
   if (nrow(possible) > 0 && n_edges > 0) {
     selected <- possible[sample(nrow(possible), min(n_edges, nrow(possible))), , drop = FALSE]
@@ -225,23 +267,33 @@ random_dag <- function(p, edge_density = 0.3) {
   dag
 }
 
-# --- Simulation Data Generation ----------------------------------------------
 
-#' Generate data from a non-linear additive SEM
+# -----------------------------------------------------------------------------
+# Structural equation model data generation
+# -----------------------------------------------------------------------------
+
+#' Simulate from a non-linear additive SEM with non-Gaussian noise
 #'
-#' @param n Sample size
-#' @param dag Adjacency matrix (p x p)
-#' @param nonlinear_frac Fraction of parent effects that are non-linear
-#' @param noise_sd Noise standard deviation
-#' @return Data frame with p columns
+#' Traverses the DAG in topological order. For each node, a random subset
+#' of its parent effects is routed through a non-linear link drawn from a
+#' fixed library (sin, cos, exponential, quadratic-sign, log-sign, tanh);
+#' the remaining parent effects are linear. Each edge receives an
+#' independent sign and a uniformly sampled magnitude. The noise term for
+#' every node is drawn, with equal probability, from a centred Laplace
+#' distribution or a centred uniform distribution, each rescaled to the
+#' target standard deviation.
+#'
+#' @param n Sample size.
+#' @param dag p-by-p binary adjacency matrix of the generating DAG.
+#' @param nonlinear_frac Fraction of parent effects made non-linear.
+#' @param noise_sd Target noise standard deviation.
+#' @return A data frame with n rows and p columns, named \code{X1, ..., Xp}.
 generate_sem_data <- function(n, dag, nonlinear_frac = 0.5, noise_sd = 1.0) {
   p <- nrow(dag)
   X <- matrix(0, n, p)
 
-  # Topological sort
   topo <- topological_sort(dag)
 
-  # Non-linear transformations
   nl_funs <- list(
     function(x) sin(x),
     function(x) cos(x),
@@ -253,7 +305,8 @@ generate_sem_data <- function(n, dag, nonlinear_frac = 0.5, noise_sd = 1.0) {
 
   for (i in topo) {
     parents <- which(dag[, i] == 1)
-    # Non-Gaussian noise: mixture of Laplace and uniform
+
+    # Non-Gaussian noise: equal-probability mixture of Laplace and uniform.
     noise <- if (runif(1) > 0.5) {
       rlaplace(n, scale = noise_sd / sqrt(2))
     } else {
@@ -265,14 +318,12 @@ generate_sem_data <- function(n, dag, nonlinear_frac = 0.5, noise_sd = 1.0) {
     } else {
       effect <- rep(0, n)
       for (idx in seq_along(parents)) {
-        j <- parents[idx]
+        j    <- parents[idx]
         coef <- runif(1, 0.5, 1.5) * sample(c(-1, 1), 1)
         if (idx <= ceiling(length(parents) * nonlinear_frac)) {
-          # Non-linear effect
-          fn <- nl_funs[[sample(length(nl_funs), 1)]]
+          fn     <- nl_funs[[sample(length(nl_funs), 1)]]
           effect <- effect + coef * fn(X[, j])
         } else {
-          # Linear effect
           effect <- effect + coef * X[, j]
         }
       }
@@ -284,44 +335,52 @@ generate_sem_data <- function(n, dag, nonlinear_frac = 0.5, noise_sd = 1.0) {
   as.data.frame(X)
 }
 
-#' Generate data from a linear SEM (for Section 4.2)
+#' Simulate from a linear SEM with non-Gaussian noise
 #'
-#' @param n Sample size
-#' @param dag Adjacency matrix
-#' @param noise_sd Noise standard deviation
-#' @return Data frame
+#' Thin wrapper around \code{generate_sem_data} with
+#' \code{nonlinear_frac = 0}, used by the linear-data diagnostics.
+#'
+#' @param n Sample size.
+#' @param dag Adjacency matrix of the generating DAG.
+#' @param noise_sd Target noise standard deviation.
+#' @return A data frame with n rows and p columns.
 generate_linear_sem_data <- function(n, dag, noise_sd = 1.0) {
   generate_sem_data(n, dag, nonlinear_frac = 0.0, noise_sd = noise_sd)
 }
 
 #' Topological sort of a DAG
 #'
-#' @param dag Adjacency matrix
-#' @return Integer vector of node indices in topological order
+#' Classical in-degree-zero peeling (Kahn's algorithm). Throws an error if
+#' the graph contains a directed cycle.
+#'
+#' @param dag p-by-p binary adjacency matrix.
+#' @return An integer vector of node indices in a valid topological order.
 topological_sort <- function(dag) {
-  p <- nrow(dag)
+  p         <- nrow(dag)
   in_degree <- colSums(dag)
-  order <- integer(0)
+  order     <- integer(0)
   remaining <- seq_len(p)
 
   while (length(remaining) > 0) {
     roots <- remaining[in_degree[remaining] == 0]
     if (length(roots) == 0) stop("Graph contains a cycle")
-    node <- roots[1]
-    order <- c(order, node)
+    node      <- roots[1]
+    order     <- c(order, node)
     remaining <- setdiff(remaining, node)
-    children <- which(dag[node, ] == 1)
+    children  <- which(dag[node, ] == 1)
     in_degree[children] <- in_degree[children] - 1
   }
   order
 }
 
-#' Laplace random numbers
+#' Draw from a Laplace (double-exponential) distribution
 #'
-#' @param n Number of samples
-#' @param location Location parameter
-#' @param scale Scale parameter
-#' @return Numeric vector
+#' Inverse-CDF sampling; avoids any external-package dependency.
+#'
+#' @param n Sample size.
+#' @param location Location parameter.
+#' @param scale Positive scale parameter.
+#' @return A numeric vector of length n.
 rlaplace <- function(n, location = 0, scale = 1) {
   u <- runif(n, -0.5, 0.5)
   location - scale * sign(u) * log(1 - 2 * abs(u))
