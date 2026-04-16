@@ -14,7 +14,7 @@ source("R/lingam_baseline.R")
 
 # --- Configuration -----------------------------------------------------------
 
-N_VALUES <- c(400, 800, 1200, 1500)
+N_VALUES <- c(400, 800, 1200, 1600)
 N_TRIALS <- 50
 P_LINEAR <- 5
 

@@ -76,7 +76,7 @@ make_dual_plot <- function(data, metric, ylabel, title_prefix,
     scale_color_manual(values = method_colors) +
     scale_linetype_manual(values = method_linetypes) +
     scale_shape_manual(values = method_shapes) +
-    scale_x_continuous(breaks = c(400, 800, 1200, 1500)) +
+    scale_x_continuous(breaks = c(400, 800, 1200, 1600)) +
     labs(x = xlab_n, y = ylabel,
          title = bquote(.(title_prefix) ~ "vs. sample size" ~ italic(n))) +
     theme_paper
@@ -89,7 +89,7 @@ make_dual_plot <- function(data, metric, ylabel, title_prefix,
     scale_color_manual(values = method_colors) +
     scale_linetype_manual(values = method_linetypes) +
     scale_shape_manual(values = method_shapes) +
-    scale_x_continuous(breaks = c(4, 8, 12, 15)) +
+    scale_x_continuous(breaks = c(4, 8, 12, 16)) +
     labs(x = xlab_p, y = ylabel,
          title = bquote(.(title_prefix) ~ "vs. number of variables" ~ italic(p))) +
     theme_paper
@@ -145,7 +145,7 @@ fig7_common <- list(
   geom_point(size = 2.2),
   scale_color_manual(values = method_colors),
   scale_linetype_manual(values = method_linetypes),
-  scale_x_continuous(breaks = c(400, 800, 1200, 1500)),
+  scale_x_continuous(breaks = c(400, 800, 1200, 1600)),
   theme_paper,
   theme(legend.position = "right")
 )

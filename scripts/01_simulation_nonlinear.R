@@ -4,7 +4,7 @@
 #
 # Generates Figures 1-6 and simulation results from the manuscript.
 # Compares additive-HSIC against LiNGAM across:
-#   p in {4, 8, 12, 15}, n in {400, 800, 1200, 1500}
+#   p in {4, 8, 12, 16}, n in {400, 800, 1200, 1600}
 #   50 Monte Carlo trials per configuration
 #
 # Usage: Rscript scripts/01_simulation_nonlinear.R
@@ -18,8 +18,8 @@ source("R/lingam_baseline.R")
 
 # --- Configuration -----------------------------------------------------------
 
-P_VALUES   <- c(4, 8, 12, 15)
-N_VALUES   <- c(400, 800, 1200, 1500)
+P_VALUES   <- c(4, 8, 12, 16)
+N_VALUES   <- c(400, 800, 1200, 1600)
 N_TRIALS   <- 50
 EDGE_DENSITY <- 0.3
 ALPHA      <- 0.05

@@ -41,7 +41,7 @@ suppressPackageStartupMessages({
 # -----------------------------------------------------------------------------
 # Configuration
 # -----------------------------------------------------------------------------
-SAMPLE_SIZES <- c(400, 800, 1200, 1500)
+SAMPLE_SIZES <- c(400, 800, 1200, 1600)
 N_REP        <- 50            # Monte Carlo replications per sample size
 BASE_SEED    <- 42
 OUT_DIR_RES  <- "results"
