@@ -1,20 +1,20 @@
 # Non-linear Causal Inference in Observational Data using Additive Models and Kernel-based Independence Testing
 
 An R implementation of a non-linear causal-discovery procedure for
-continuous observational data. The method combines penalised additive
+continuous observational data. The method combines penalized additive
 models, fitted by restricted maximum likelihood (REML), with the
 Hilbert–Schmidt Independence Criterion (HSIC) in a permutation test
 for residual dependence. Edges are selected by Benjamini–Hochberg
 false discovery rate control on the pairwise HSIC permutation
-$p$-values (optionally followed by an effect-size filter for
-high-sample, low-dimensional data), and orientation is determined by
-the asymmetry of the directional HSIC scores. A post-processing step
-enforces acyclicity.
+$p$-values, optionally followed by an effect-size filter when $n$ is
+large relative to $p$. Each edge is oriented by the larger of its two
+directional HSIC scores, and a post-processing step enforces
+acyclicity.
 
 ## Method
 
 For every ordered pair of variables $(i, j)$, the procedure fits a
-penalised additive model of $X_i$ on all remaining variables *except*
+penalized additive model of $X_i$ on all remaining variables *except*
 $X_j$,
 $$
   X_i \;=\; \sum_{k \neq i, j} f_k(X_k) \;+\; r_i^{(-j)},
@@ -22,10 +22,11 @@ $$
 using cubic B-splines with REML-selected smoothness penalties, and
 then measures the residual dependence
 $\widehat{\mathrm{HSIC}}(r_i^{(-j)}, X_j)$ with a Gaussian kernel whose
-bandwidth is set by the median heuristic. The directional asymmetry
-$M_{ij} - M_{ji}$ orients the edge. Significance is assessed by
-permuting the sample indices of $X_j$ (with a matched permutation of
-$X_i$), yielding a calibrated finite-sample null.
+bandwidth is set by the median heuristic. Orientation is determined
+by the larger of $M_{ij}$ and $M_{ji}$, which identifies the parent.
+Significance is assessed by permuting the sample indices of $X_j$
+(with a matched permutation of $X_i$), yielding a calibrated
+finite-sample null.
 
 Two edge-selection modes are provided:
 
@@ -111,7 +112,7 @@ UCI Machine Learning Repository on first run and cached in `data/`.
 | Parameter         | Simulation   | Wine (red)        | Role                                              |
 |-------------------|--------------|-------------------|---------------------------------------------------|
 | `alpha`           | 0.05         | 0.20 (screening)  | Benjamini–Hochberg false-discovery-rate level     |
-| `n_perm`          | 200          | 1\,000            | Permutation count for the HSIC null               |
+| `n_perm`          | 200          | 1,000             | Permutation count for the HSIC null               |
 | `n_sub`           | –            | 200               | Sub-sample size for the permutation test          |
 | `target_density`  | –            | 0.15              | Target edge density in the two-stage filter       |
 | `gamma`           | 1.4          | 1.4               | Extra smoothing penalty in `mgcv::gam`            |
@@ -120,9 +121,9 @@ UCI Machine Learning Repository on first run and cached in `data/`.
 
 ## Data
 
-The red-wine CSV (`data/winequality-red.csv`, $n = 1\,599$, $p = 12$)
+The red-wine CSV (`data/winequality-red.csv`, $n = 1{,}599$, $p = 12$)
 is bundled with the repository. The white-wine file is downloaded on
-demand. Both datasets are from
+first run. Both datasets are from
 [Cortez et al., 2009](https://archive.ics.uci.edu/ml/datasets/Wine+Quality).
 
 ## Citation
