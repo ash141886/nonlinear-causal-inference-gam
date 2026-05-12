@@ -16,17 +16,23 @@ acyclicity.
 For every ordered pair of variables $(i, j)$, the procedure fits a
 penalized additive model of $X_i$ on all remaining variables *except*
 $X_j$,
+
 $$
-  X_i \;=\; \sum_{k \neq i, j} f_k(X_k) \;+\; r_i^{(-j)},
+X_i = \sum_{k \neq i,\, k \neq j} f_k(X_k) + r_i^{(-j)},
 $$
+
 using cubic B-splines with REML-selected smoothness penalties, and
 then measures the residual dependence
-$\widehat{\mathrm{HSIC}}(r_i^{(-j)}, X_j)$ with a Gaussian kernel whose
-bandwidth is set by the median heuristic. Orientation is determined
-by the larger of $M_{ij}$ and $M_{ji}$, which identifies the parent.
-Significance is assessed by permuting the sample indices of $X_j$
-(with a matched permutation of $X_i$), yielding a calibrated
-finite-sample null.
+
+$$
+M_{ij} = \widehat{\mathrm{HSIC}}\bigl(r_i^{(-j)},\, X_j\bigr)
+$$
+
+with a Gaussian kernel whose bandwidth is set by the median
+heuristic. Orientation is determined by the larger of $M_{ij}$ and
+$M_{ji}$, which identifies the parent. Significance is assessed by
+permuting the sample indices of $X_j$ (with a matched permutation of
+$X_i$), yielding a calibrated finite-sample null.
 
 Two edge-selection modes are provided:
 
